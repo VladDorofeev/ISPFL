@@ -57,10 +57,11 @@ def build_command(compression_metod, dynamic_clients):
         )
 
     # Build output filename
-    output_name = f"outputs/ISP_experiments/grad_compression/compression_{compression_metod}_cifar10.txt"
+    file_name = f"compression_{compression_metod}_cifar10.txt"
     if dynamic_clients:
-        output_name = "isp_" + output_name
+        file_name = "isp_" + file_name
 
+    output_name = f"outputs/ISP_experiments/grad_compression/{file_name}"
     return params, f"{output_name}"
 
 
@@ -77,7 +78,7 @@ for dynamic_clients in [True, False]:
         cmd_str = " ".join(cmd) + f" > {output_path}"
 
         print(
-            f"Running compression strategy. Dynamic clients {args.dynamic_clients} ",
+            f"Running compression strategy {compression_metod}.",
             flush=True,
         )
         subprocess.run(cmd_str, shell=True, check=True)
