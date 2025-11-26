@@ -25,6 +25,10 @@ python src/utils/cifar_download.py --target_dir=cifar10
 ```bash
 python src/utils/image_net_download.py --target_dir=image_net
 ```
+4. **Download Shakespeare dataset**
+```bash
+python src/utils/shakespeare_download.py --target_dir=shakespeare
+```
 
 ✅ **Verification**: You should get `"All steps completed successfully!!!"`. 
 

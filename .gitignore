@@ -1,0 +1,7 @@
+venv/
+*.egg-info
+__pycache__/
+**/cifar10/
+**/shakespeare/
+**/tiny_imagenet/
+**/outputs/

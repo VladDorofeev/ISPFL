@@ -4,13 +4,9 @@ from torch.utils.data import DataLoader
 
 from omegaconf import open_dict
 
-from .image_net_utils import (
-    ImageNetDataset,
-)
-from .cifar_utils import (
-    ImageDataset,
-    get_image_dataset_params,
-)
+from .image_net_utils import ImageNetDataset
+from .cifar_utils import ImageDataset, get_image_dataset_params
+from .shakespeare_utils import ShakespeareDataset
 
 
 def prepare_df_for_federated_training(
@@ -18,17 +14,26 @@ def prepare_df_for_federated_training(
     directories_key: str,
 ):
     df = read_dataframe_from_cfg(cfg, directories_key)
+
+    # Shakespeare version to select subset of clients
+    amount_clients_subset = getattr(cfg.dataset, "amount_of_clients", None)
+    if amount_clients_subset is not None:
+        unique_clients = df["client"].unique()
+        rng = np.random.default_rng(cfg.random_state)
+        chosen = rng.choice(unique_clients, size=amount_clients_subset, replace=False)
+        allowed_clients = sorted(set(chosen))
+        df = df[df["client"].isin(allowed_clients)]
+        df["client"] = df["client"].apply(lambda x: allowed_clients.index(x) + 1)
+
     df["client"] = df["client"].apply(lambda x: x - 1)
     if "dirichlet" in cfg.dataset.data_name:
         df = create_dirichlet_df(df, cfg)
 
     df.reset_index(drop=True, inplace=True)
 
-    num_classes = pd.Series(
-        np.concatenate(
-            df["target"].apply(lambda x: x if isinstance(x, list) else [x]).values
-        )
-    ).nunique()
+    # Text datasets can provide vocab size explicitly to avoid parsing sequence columns
+    if hasattr(cfg.dataset, "vocab_size") and cfg.dataset.vocab_size is not None:
+        num_classes = cfg.dataset.vocab_size
 
     print(f"Num classes = {num_classes}")
 
@@ -62,6 +67,8 @@ def get_dataset_loader(
         # CIFAR case
         image_size, mean, std = get_image_dataset_params(cfg, df)
         dataset = ImageDataset(df, mode, image_size, mean, std)
+    elif "shakespeare" in cfg["dataset"]["data_name"]:
+        dataset = ShakespeareDataset(df, cfg, mode)
     else:
         # ImageNet case
         dataset = ImageNetDataset(df)

@@ -16,6 +16,7 @@ from utils.attack_utils import (
 )
 
 from ..fedavg.fedavg import FedAvg
+from federated_methods.text_base.text_fedavg import TextFedAvg
 from ..fedcbs.fedcbs import FedCBS
 from ..delta.delta import Delta
 from ..pow.pow import Pow
@@ -56,9 +57,11 @@ class ISP:
 
     def _init_federated(self, cfg, df):
         if self.base_method == "fedavg":
-            name_method = "FedAvg"
-            metaclass = type(FedAvg)
-            isp_class = metaclass(f"ISPClass_{name_method}", (FedAvg,), {})
+            # Use text-specific FedAvg for Shakespeare datasets
+            base_cls = TextFedAvg if "shakespeare" in cfg.dataset.data_name else FedAvg
+            name_method = base_cls.__name__
+            metaclass = type(base_cls)
+            isp_class = metaclass(f"ISPClass_{name_method}", (base_cls,), {})
 
         elif self.base_method == "fedcbs":
             name_method = "FedCBS"
@@ -103,7 +106,11 @@ class ISP:
         isp_method.amount_of_clients = cfg.federated_params.amount_of_clients
         isp_method.optimal_amount_clients = 1
         isp_method.full_comm_client_amount = self.full_comm_client_amount
-        isp_method.borders_of_clients = [1, self.full_comm_client_amount + 1]
+        start_clients_num = 10
+        isp_method.borders_of_clients = [
+            start_clients_num,
+            self.full_comm_client_amount + 1,
+        ]
         isp_method.find_optimal_rounds = [
             i
             for i in range(
@@ -125,43 +132,55 @@ class ISP:
         else:
             # Trust df = Validation client datasets
             # We don't pass models to clients in our code to avoid complex programming.
-            # We simply use client validation as a trust dataset, 
+            # We simply use client validation as a trust dataset,
             # thus unifying the ISP pipeline from the technical implementation side.
             val_client_df = pd.DataFrame()
             n_classes = cfg.training_params.num_classes
             train_val_prop = cfg.federated_params.client_train_val_prop
 
+            is_text = "shakespeare" in cfg.dataset.data_name
+
             for cl_rank in range(isp_method.amount_of_clients):
                 cur_train_val_prop = train_val_prop
                 client_df = df[df["client"] == cl_rank]
 
-                minor_classes_ids = (
-                    client_df["target"]
-                    .value_counts()[client_df["target"].value_counts() < 2]
-                    .index
-                )
-                major_classes_df = client_df[
-                    ~client_df["target"].isin(minor_classes_ids)
-                ]
-
-                if cur_train_val_prop * len(major_classes_df) < n_classes:
-                    cur_train_val_prop = (
-                        1 / major_classes_df["target"].value_counts().min()
+                if is_text:
+                    # For text, targets are sequences; use a simple random split
+                    _, client_val = train_test_split(
+                        client_df,
+                        test_size=cur_train_val_prop,
+                        random_state=cfg.random_state,
+                        shuffle=True,
                     )
+                else:
+                    minor_classes_ids = (
+                        client_df["target"]
+                        .value_counts()[client_df["target"].value_counts() < 2]
+                        .index
+                    )
+                    major_classes_df = client_df[
+                        ~client_df["target"].isin(minor_classes_ids)
+                    ]
 
-                train_part, client_df = train_test_split(
-                    major_classes_df,
-                    test_size=cur_train_val_prop,
-                    stratify=major_classes_df["target"],
-                    random_state=cfg.random_state,
+                    if cur_train_val_prop * len(major_classes_df) < n_classes:
+                        cur_train_val_prop = (
+                            1 / major_classes_df["target"].value_counts().min()
+                        )
+
+                    train_part, client_val = train_test_split(
+                        major_classes_df,
+                        test_size=cur_train_val_prop,
+                        stratify=major_classes_df["target"],
+                        random_state=cfg.random_state,
+                    )
+                val_client_df = pd.concat([val_client_df, client_val])
+
+            if "shakespeare" not in cfg.dataset.data_name:
+                print("Trust Distribution:")
+                print_df_distribution(
+                    val_client_df, n_classes, isp_method.amount_of_clients
                 )
-                val_client_df = pd.concat([val_client_df, client_df])
-
-            print("Trust Distribution:")
-            print_df_distribution(
-                val_client_df, n_classes, isp_method.amount_of_clients
-            )
-            print("\n\n")
+                print("\n\n")
 
             isp_method.server.trust_df = val_client_df
 
@@ -193,7 +212,11 @@ class ISP:
         isp_method.server.wp_mean_amount_cl_loss = None
         isp_method.server.cnt_solve_optimal_task = 0
         isp_method.server.num_clients_momentum = self.num_clients_momentum
-        isp_method.server.num_classes = trust_df["target"].nunique()
+        isp_method.server.num_classes = (
+            trust_df["target"].nunique()
+            if "shakespeare" not in cfg.dataset.data_name
+            else cfg.training_params.num_classes
+        )
         print(f"Num classes on task is {isp_method.server.num_classes}")
 
         isp_method.begin_train = MethodType(ISP.begin_train, isp_method)
@@ -211,6 +234,11 @@ class ISP:
         isp_method.server.eval_global_model = MethodType(
             ISP.eval_global_model, isp_method.server
         )
+        # Text-specific eval for Shakespeare datasets
+        if "shakespeare" in cfg.dataset.data_name:
+            isp_method.server.eval_global_model = MethodType(
+                ISP.text_eval_global_model, isp_method.server
+            )
 
         isp_method.full_method_get_communication_content = MethodType(
             isp_class.get_communication_content,
@@ -285,6 +313,60 @@ class ISP:
                 targets = targets.to("cpu")
 
         trust_loss = val_loss / len(self.eval_loader)
+
+        if need_save_loss:
+            self.trust_losses.append(trust_loss)
+
+        return trust_loss
+
+    def text_eval_global_model(self, need_save_loss):
+        """Text-domain evaluation using sequence-aware loss/metrics."""
+        self.global_model.to(self.device)
+        self.global_model.eval()
+
+        self.criterion = get_loss(
+            loss_cfg=self.cfg.loss,
+            device=self.device,
+            df=self.trust_df,
+        )
+
+        total_loss = 0
+        total_tokens = 0
+        fin_targets = []
+        fin_outputs = []
+
+        with torch.no_grad():
+            for _, batch in enumerate(self.eval_loader):
+                _, (input, targets) = batch
+
+                inp = input[0].to(self.device)
+                targets = targets.to(self.device)
+
+                outputs = self.global_model(inp)
+
+                # flatten logits and targets for CE
+                if outputs.dim() == 3:
+                    outputs_flat = outputs.reshape(-1, outputs.size(-1))
+                else:
+                    outputs_flat = outputs
+                if targets.dim() > 1:
+                    targets_flat = targets.reshape(-1)
+                else:
+                    targets_flat = targets
+
+                loss = self.criterion(outputs_flat, targets_flat)
+                total_loss += loss.detach().item()
+                total_tokens += (
+                    (targets_flat != self.criterion.ignore_index).sum().item()
+                )
+
+                fin_targets.extend(targets_flat.tolist())
+                fin_outputs.extend(outputs_flat.tolist())
+
+                inp = input[0].to("cpu")
+                targets = targets.to("cpu")
+
+        trust_loss = total_loss / len(self.eval_loader)
 
         if need_save_loss:
             self.trust_losses.append(trust_loss)
@@ -432,7 +514,7 @@ class ISP:
             )
             # choose for comparsion last loss from ema history
             return ema_trust_losses[-1]
-        
+
         return self.trust_losses[-2]
 
     def get_functional_value(self, amount_of_clients):

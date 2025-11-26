@@ -1,0 +1,11 @@
+alpha: 1
+data_name: shakespeare
+data_sources:
+  test_directories:
+  - /home/skorik/ISPFL/shakespeare/shakespeare_data/test_df.csv
+  train_directories:
+  - /home/skorik/ISPFL/shakespeare/shakespeare_data/train_df.csv
+pad_token_id: 126
+amount_of_clients: 1129
+verbose: true
+vocab_size: 127
