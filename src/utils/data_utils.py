@@ -34,7 +34,9 @@ def prepare_df_for_federated_training(
     # Text datasets can provide vocab size explicitly to avoid parsing sequence columns
     if hasattr(cfg.dataset, "vocab_size") and cfg.dataset.vocab_size is not None:
         num_classes = cfg.dataset.vocab_size
-
+    else:
+        num_classes = df['target'].nunique()
+    
     print(f"Num classes = {num_classes}")
 
     with open_dict(cfg):

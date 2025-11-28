@@ -21,6 +21,7 @@ from ..fedcbs.fedcbs import FedCBS
 from ..delta.delta import Delta
 from ..pow.pow import Pow
 from ..fedcor.fedcor import FedCor
+from ..oort.oort import Oort
 from ..compression.compression import Compression
 
 
@@ -88,6 +89,11 @@ class ISP:
             metaclass = type(Compression)
             isp_class = metaclass(f"ISPClass_{name_method}", (Compression,), {})
 
+        elif self.base_method == "oort":
+            name_method = "Oort"
+            metaclass = type(Oort)
+            isp_class = metaclass(f"ISPClass_{name_method}", (Oort,), {})
+
         else:
             raise NotImplementedError(
                 f"{self.base_method} not available to ISP version"
@@ -106,11 +112,7 @@ class ISP:
         isp_method.amount_of_clients = cfg.federated_params.amount_of_clients
         isp_method.optimal_amount_clients = 1
         isp_method.full_comm_client_amount = self.full_comm_client_amount
-        start_clients_num = 10
-        isp_method.borders_of_clients = [
-            start_clients_num,
-            self.full_comm_client_amount + 1,
-        ]
+        isp_method.borders_of_clients = [1, self.full_comm_client_amount + 1]
         isp_method.find_optimal_rounds = [
             i
             for i in range(
@@ -430,6 +432,7 @@ class ISP:
             self.list_clients = self.server.select_clients_to_train(
                 self.num_clients_subset
             )
+            self.server.list_clients = self.list_clients
             self.list_clients.sort()
             print(f"Clients on this communication: {self.list_clients}\n")
             print(

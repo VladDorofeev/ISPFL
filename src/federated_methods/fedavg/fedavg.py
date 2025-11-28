@@ -85,6 +85,7 @@ class FedAvg(Base):
 
             self.list_clients = self.server.select_clients_to_train(self.num_clients_subset)
             self.list_clients.sort()
+            self.server.list_clients = self.list_clients
             print(f"Clients on this communication: {self.list_clients}")
             print(f"Amount of clients on this communication: {len(self.list_clients)}\n")
 
