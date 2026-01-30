@@ -1,5 +1,5 @@
 
-# Communication-Efficient Federated Learning with Adaptive Number of Participants
+# Dynamic Client Count Selection for Scalable Federated Learning
 
 ## Table of contents
 0. [Running Experiments](docs/experiments.md) -- Run the command to get reproducibilit
