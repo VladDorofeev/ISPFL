@@ -38,6 +38,7 @@ class ISP:
         window_sz_loss,
         local_epoch_on_wp,
         full_comm_client_amount,
+        full_comm_amount_cl_multiplayer,
         trust_available,
         corrupted_trust,
         ema_use,
@@ -52,6 +53,7 @@ class ISP:
         self.window_sz_loss = window_sz_loss
         self.local_epoch_on_wp = local_epoch_on_wp
         self.full_comm_client_amount = full_comm_client_amount
+        self.full_comm_amount_cl_multiplayer = full_comm_amount_cl_multiplayer
         self.trust_available = trust_available
         self.corrupted_trust = corrupted_trust
         self.ema_use = ema_use
@@ -111,9 +113,21 @@ class ISP:
         isp_method.window_sz_loss = self.window_sz_loss
         isp_method.local_epoch_on_wp = self.local_epoch_on_wp
         isp_method.amount_of_clients = cfg.federated_params.amount_of_clients
-        isp_method.optimal_amount_clients = 1
+        isp_method.initial_num_clients_subset = int(isp_method.num_clients_subset)
+        isp_method.optimal_amount_clients = int(isp_method.initial_num_clients_subset)
+        isp_method.full_comm_amount_cl_multiplayer = (
+            self.full_comm_amount_cl_multiplayer
+        )
         isp_method.full_comm_client_amount = self.full_comm_client_amount
-        isp_method.borders_of_clients = [1, self.full_comm_client_amount + 1]
+        isp_method.current_full_comm_client_amount = (
+            ISP.resolve_full_comm_client_amount(
+                isp_method, isp_method.optimal_amount_clients
+            )
+        )
+        isp_method.borders_of_clients = [
+            1,
+            isp_method.current_full_comm_client_amount + 1,
+        ]
         isp_method.find_optimal_rounds = [
             i
             for i in range(
@@ -185,6 +199,7 @@ class ISP:
                 )
                 print("\n\n")
 
+            trust_df = val_client_df.copy()
             isp_method.server.trust_df = val_client_df
 
         mode = "valid"
@@ -225,6 +240,12 @@ class ISP:
 
         isp_method.collect_sampling_statistics_for_find_optimal = MethodType(
             ISP.collect_sampling_statistics_for_find_optimal, isp_method
+        )
+        isp_method.resolve_full_comm_client_amount = MethodType(
+            ISP.resolve_full_comm_client_amount, isp_method
+        )
+        isp_method.update_full_comm_budget = MethodType(
+            ISP.update_full_comm_budget, isp_method
         )
 
         isp_method.begin_train = MethodType(ISP.begin_train, isp_method)
@@ -386,17 +407,50 @@ class ISP:
             return
         self.sampling_statistics.collect(self)
 
+    def resolve_full_comm_client_amount(self, reference_num_clients=None):
+        if reference_num_clients is None:
+            reference_num_clients = getattr(
+                self, "optimal_amount_clients", self.initial_num_clients_subset
+            )
+
+        if self.full_comm_client_amount is None:
+            if self.full_comm_amount_cl_multiplayer < 1:
+                raise ValueError(
+                    "full_comm_amount_cl_multiplayer must be >= 1 "
+                    f"(got {self.full_comm_amount_cl_multiplayer})"
+                )
+            full_comm_amount = int(
+                np.ceil(
+                    float(self.full_comm_amount_cl_multiplayer)
+                    * float(reference_num_clients)
+                )
+            )
+        else:
+            full_comm_amount = int(self.full_comm_client_amount)
+
+        return max(1, min(int(self.amount_of_clients), full_comm_amount))
+
+    def update_full_comm_budget(self, reference_num_clients=None):
+        full_comm_amount = self.resolve_full_comm_client_amount(reference_num_clients)
+        self.current_full_comm_client_amount = full_comm_amount
+        self.borders_of_clients = [1, full_comm_amount + 1]
+        return full_comm_amount
+
     def get_amount_clients(self):
         if self.cur_round < self.warmup_rounds:
             print("Warmup round")
-            self.num_clients_subset = self.full_comm_client_amount
+            self.num_clients_subset = self.update_full_comm_budget(
+                self.optimal_amount_clients
+            )
             return self.num_clients_subset
 
         if self.cur_round in self.find_optimal_rounds:
             # We need do full communication round
             # for find optimal amount of clients
             print('Full round for "Optimal" method')
-            self.num_clients_subset = self.full_comm_client_amount
+            self.num_clients_subset = self.update_full_comm_budget(
+                self.optimal_amount_clients
+            )
             return self.num_clients_subset
 
         if self.cur_round - 1 in self.find_optimal_rounds:

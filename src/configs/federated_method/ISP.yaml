@@ -11,7 +11,8 @@ warmup_rounds: 12 # amount of full communication rounds
 window_sz_loss: 5 # size of window for average trust loss by history
 local_epoch_on_wp: 3 # amount of local epoch on clients while warmup
 
-full_comm_client_amount: 100
+full_comm_client_amount: null # for ablation [1, amount_of_clients], can be null for using multiplayer form
+full_comm_amount_cl_multiplayer: 2 # clients on full communication = full_comm_amount_cl_multiplayer * m_t; must be >= 1
 trust_available: False
 corrupted_trust: False
 ema_use: True
