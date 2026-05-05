@@ -5,3 +5,6 @@ __pycache__/
 **/shakespeare/
 **/tiny_imagenet/
 **/outputs/
+**.gz**
+**.pdf
+**images

@@ -33,3 +33,30 @@ federated_params:
     prop_attack_clients: 0.0 # Must be in accordance with `clients_attack_types`.
     attack_scheme: "no_attack" # constant, random_rounds, random_clients, random_rounds_random_clients
     prop_attack_rounds: 0.0
+
+sampling_statistics: # about sampling statistic in ISP method
+    enabled: False
+    output_subdir: "selection_statistics"
+    R_pi: 200
+    R_b: 20
+    T_in: 200
+    m_grid_values: null
+    m_grid_start: 1
+    m_grid_stop: null
+    m_grid_step: 5
+    m_grid_include_stop: False
+    b_grid_values: null
+    b_grid_use_m_grid: True
+    b_grid_start: 1
+    b_grid_stop: null
+    b_grid_step: 5
+    b_grid_include_stop: False
+    backend: "thread" # thread, process, sequential
+    num_workers: 8
+    chunk_size: 32
+    log_pi_samples: True
+    log_i_samples: True
+    log_psi_samples: True
+    fedcor_tau: 0.0
+    pow_topk_tau: 0.0
+    seed_offset: 100000

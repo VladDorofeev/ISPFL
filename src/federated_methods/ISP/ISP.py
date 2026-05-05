@@ -11,6 +11,7 @@ from utils.losses import get_loss
 from utils.data_utils import get_dataset_loader
 from sklearn.model_selection import train_test_split
 from utils.data_utils import read_dataframe_from_cfg, print_df_distribution
+from utils.cs_statistics import ClientSelectionStatisticsCollector
 from utils.attack_utils import (
     set_client_map_round,
 )
@@ -220,6 +221,11 @@ class ISP:
             else cfg.training_params.num_classes
         )
         print(f"Num classes on task is {isp_method.server.num_classes}")
+        isp_method.sampling_statistics = ClientSelectionStatisticsCollector(cfg)
+
+        isp_method.collect_sampling_statistics_for_find_optimal = MethodType(
+            ISP.collect_sampling_statistics_for_find_optimal, isp_method
+        )
 
         isp_method.begin_train = MethodType(ISP.begin_train, isp_method)
         isp_method.get_amount_clients = MethodType(ISP.get_amount_clients, isp_method)
@@ -375,6 +381,11 @@ class ISP:
 
         return trust_loss
 
+    def collect_sampling_statistics_for_find_optimal(self):
+        if getattr(self, "sampling_statistics", None) is None:
+            return
+        self.sampling_statistics.collect(self)
+
     def get_amount_clients(self):
         if self.cur_round < self.warmup_rounds:
             print("Warmup round")
@@ -392,6 +403,7 @@ class ISP:
             # In prevous round we use all clients, and now
             # we need recalculate optimal amount of clients
 
+            self.collect_sampling_statistics_for_find_optimal()
             self.optimal_amount_clients = self.server.find_optimal(
                 self.borders_of_clients
             )
